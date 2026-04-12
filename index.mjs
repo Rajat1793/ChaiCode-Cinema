@@ -6,11 +6,14 @@
 // INSERT INTO seats (isbooked)
 // SELECT 0 FROM generate_series(1, 20);
 
+import "dotenv/config";
 import express from "express";
 import pg from "pg";
 import { dirname } from "path";
 import { fileURLToPath } from "url";
 import cors from "cors";
+import bcrypt from "bcryptjs";
+import jwt from "jsonwebtoken";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -21,11 +24,8 @@ const port = process.env.PORT || 8080;
 // If you pick one connection out of the pool and release it
 // the pooler will keep that connection open for sometime to other clients to reuse
 const pool = new pg.Pool({
-  host: "localhost",
-  port: 5433,
-  user: "postgres",
-  password: "postgres",
-  database: "sql_class_2_db",
+  connectionString: process.env.DATABASE_URL,
+  ssl: process.env.DATABASE_URL?.includes("render.com") ? { rejectUnauthorized: false } : false,
   max: 20,
   connectionTimeoutMillis: 0,
   idleTimeoutMillis: 0,
@@ -33,7 +33,7 @@ const pool = new pg.Pool({
 
 const app = new express();
 app.use(cors());
-
+app.use(express.json()); // to parse JSON request bodies
 app.get("/", (req, res) => {
   res.sendFile(__dirname + "/index.html");
 });
