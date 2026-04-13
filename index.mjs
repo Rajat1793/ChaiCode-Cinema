@@ -19,10 +19,11 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const port = process.env.PORT || 8080;
 
-// Equivalent to mongoose connection
-// Pool is nothing but group of connections
-// If you pick one connection out of the pool and release it
-// the pooler will keep that connection open for sometime to other clients to reuse
+if (!process.env.DATABASE_URL) {
+  console.error("❌  DATABASE_URL env var is not set. Exiting.");
+  process.exit(1);
+}
+
 const pool = new pg.Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: process.env.DATABASE_URL?.includes("render.com") ? { rejectUnauthorized: false } : false,
