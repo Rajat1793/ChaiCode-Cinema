@@ -27,9 +27,9 @@ if (!process.env.DATABASE_URL) {
 const pool = new pg.Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: process.env.DATABASE_URL?.includes("render.com") ? { rejectUnauthorized: false } : false,
-  max: 20,
-  connectionTimeoutMillis: 0,
-  idleTimeoutMillis: 0,
+  max: parseInt(process.env.DB_POOL_MAX) || 20,
+  connectionTimeoutMillis: parseInt(process.env.DB_POOL_CONNECTION_TIMEOUT) || 0,
+  idleTimeoutMillis: parseInt(process.env.DB_POOL_IDLE_TIMEOUT) || 0,
 });
 
 // Authentication using middleware
@@ -65,7 +65,7 @@ app.post("/register", async (req, res) => {
   try {
     const { username, email, password } = req.body;
     // hash the password before storing it in the database
-    const salt = await bcrypt.genSalt(10);
+    const salt = await bcrypt.genSalt(parseInt(process.env.BCRYPT_SALT_ROUNDS) || 10);
     const password_hash = await bcrypt.hash(password, salt);
     const sql = "INSERT INTO users (username, email, password_hash) VALUES ($1, $2, $3)";
     await pool.query(sql, [username, email, password_hash]);
@@ -94,7 +94,7 @@ app.post("/login", async (req, res) => {
       return res.status(400).send({ error: "Invalid email or password" });
     }
     // generate JWT token
-    const token = jwt.sign({ id: user.id }, process.env.JWT_SECRET, { expiresIn: "1h" });
+    const token = jwt.sign({ id: user.id }, process.env.JWT_SECRET, { expiresIn: process.env.JWT_EXPIRES_IN || "1h" });
     res.send({ token });
   } catch (err) {
     console.error(err);
