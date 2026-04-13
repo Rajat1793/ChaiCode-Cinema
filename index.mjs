@@ -101,6 +101,13 @@ app.post("/login", async (req, res) => {
   }
 });
 
+// get logged-in user's profile
+app.get("/me", authenticate, async (req, res) => {
+  const result = await pool.query("SELECT id, username, email FROM users WHERE id = $1", [req.user.id]);
+  if (result.rowCount === 0) return res.status(404).send({ error: "User not found" });
+  res.send(result.rows[0]);
+});
+
 // protected book a seat endpoint - requires JWT token
 // user identity comes from the token, not the URL
 app.put("/book/:id", authenticate, async (req, res) => {
