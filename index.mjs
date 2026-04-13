@@ -31,6 +31,22 @@ const pool = new pg.Pool({
   idleTimeoutMillis: 0,
 });
 
+// Authentication using middleware
+function authenticate(req, res, next) {
+  const header = req.headers.authorization;
+  if (!header || !header.startsWith("Bearer ")) {
+    return res.status(401).send({ error: "No token provided" });
+  }
+  try {
+    const token = header.split(" ")[1];
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    req.user = decoded; // { id, iat, exp }
+    next();
+  } catch (err) {
+    return res.status(401).send({ error: "Invalid or expired token" });
+  }
+}
+
 const app = new express();
 app.use(cors());
 app.use(express.json()); // to parse JSON request bodies
@@ -43,7 +59,81 @@ app.get("/seats", async (req, res) => {
   res.send(result.rows);
 });
 
-//book a seat give the seatId and your name
+// register a user by taking username, email and password
+app.post("/register", async (req, res) => {
+  try {
+    const { username, email, password } = req.body;
+    // hash the password before storing it in the database
+    const salt = await bcrypt.genSalt(10);
+    const password_hash = await bcrypt.hash(password, salt);
+    const sql = "INSERT INTO users (username, email, password_hash) VALUES ($1, $2, $3)";
+    await pool.query(sql, [username, email, password_hash]);
+    res.status(201).send({ message: "User registered successfully" });
+  } catch (err) {
+    console.error(err);
+    if (err.code === "23505") {
+      return res.status(409).send({ error: "Username or email already exists" });
+    }
+    res.status(500).send({ error: "Registration failed" });
+  }
+}); 
+
+// login a user by taking email and password, if successful return a JWT token
+app.post("/login", async (req, res) => {
+  try {
+    const { email, password } = req.body;
+    const sql = "SELECT * FROM users WHERE email = $1";
+    const result = await pool.query(sql, [email]);
+    if (result.rowCount === 0) {
+      return res.status(400).send({ error: "Invalid email or password" });
+    }
+    const user = result.rows[0];
+    const isMatch = await bcrypt.compare(password, user.password_hash);
+    if (!isMatch) {
+      return res.status(400).send({ error: "Invalid email or password" });
+    }
+    // generate JWT token
+    const token = jwt.sign({ id: user.id }, process.env.JWT_SECRET, { expiresIn: "1h" });
+    res.send({ token });
+  } catch (err) {
+    console.error(err);
+    res.status(500).send({ error: "Login failed" });
+  }
+});
+
+// protected book a seat endpoint - requires JWT token
+// user identity comes from the token, not the URL
+app.put("/book/:id", authenticate, async (req, res) => {
+  try {
+    const id = req.params.id;
+    // get the username from the DB using the id stored in the JWT
+    const userResult = await pool.query("SELECT username FROM users WHERE id = $1", [req.user.id]);
+    if (userResult.rowCount === 0) {
+      return res.status(401).send({ error: "User not found" });
+    }
+    const name = userResult.rows[0].username;
+
+    const conn = await pool.connect();
+    await conn.query("BEGIN");
+    const sql = "SELECT * FROM seats WHERE id = $1 AND isbooked = 0 FOR UPDATE";
+    const result = await conn.query(sql, [id]);
+    if (result.rowCount === 0) {
+      await conn.query("ROLLBACK");
+      conn.release();
+      return res.status(409).send({ error: "Seat already booked" });
+    }
+    const sqlU = "UPDATE seats SET isbooked = 1, name = $2 WHERE id = $1";
+    await conn.query(sqlU, [id, name]);
+    await conn.query("COMMIT");
+    conn.release();
+    res.send({ message: "Seat booked successfully", seat: id, bookedBy: name });
+  } catch (ex) {
+    console.log(ex);
+    res.status(500).send({ error: "Booking failed" });
+  }
+});
+
+//book a seat give the seatId and your name (original unprotected endpoint - kept for compatibility)
 
 app.put("/:id/:name", async (req, res) => {
   try {
