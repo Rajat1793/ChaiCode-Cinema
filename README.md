@@ -2,7 +2,7 @@
 
 A simplified movie seat booking platform built for the **ChaiCode Hackathon**. Users can register, login and book seats for a movie. Built on top of the provided starter code by adding an authentication layer and protected booking flow.
 
-Live demo: [ChaiCode Cinema](https://bookmyticket-jh4s.onrender.com/)
+Live demo: [ChaiCode Cinema](https://chaicode-cinema.onrender.com/)
 
 ---
 
