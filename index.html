@@ -18,6 +18,10 @@
       <div class="text-center mb-8">
         <h1 class="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-orange-400 to-amber-400 tracking-tight">ChaiCode Cinema</h1>
         <p class="text-slate-400 mt-2">Sign in to book your seats</p>
+        <!-- Cold start notice -->
+        <div id="wakeup-banner" class="hidden mt-3 px-4 py-2 bg-amber-500/10 border border-amber-500/30 rounded-xl text-amber-400 text-xs">
+          <span class="inline-block animate-spin mr-1">⏳</span> Server is waking up, please wait...
+        </div>
       </div>
 
       <div class="bg-slate-800/80 backdrop-blur-xl rounded-3xl shadow-2xl p-8 border border-slate-700/50">
@@ -227,13 +231,25 @@
 
       async function loadSeatsScreen() {
         const token = getToken();
-        // get username from token payload
-        const payload = JSON.parse(atob(token.split(".")[1]));
-        // fetch username by calling a quick endpoint — we use /seats to confirm connectivity
-        // The JWT payload only has id; we call a lightweight check
-        const profileRes = await fetch("/me", { headers: { Authorization: `Bearer ${token}` } });
-        if (profileRes.ok) {
-          const profile = await profileRes.json();
+
+        // retry /me up to 10 times with 3s gap to handle cold start
+        let profile = null;
+        for (let attempt = 1; attempt <= 10; attempt++) {
+          try {
+            const profileRes = await fetch("/me", { headers: { Authorization: `Bearer ${token}` } });
+            if (profileRes.ok) {
+              profile = await profileRes.json();
+              document.getElementById("wakeup-banner").classList.add("hidden");
+              break;
+            }
+          } catch {
+            // server not up yet
+          }
+          if (attempt === 2) document.getElementById("wakeup-banner").classList.remove("hidden");
+          await new Promise(r => setTimeout(r, 3000));
+        }
+
+        if (profile) {
           localStorage.setItem("username", profile.username);
           document.getElementById("username-display").textContent = profile.username;
         }
@@ -274,7 +290,7 @@
         const token = getToken();
         if (!token) { logout(); return; }
         try {
-          const res = await fetch(`/book/${id}`, {
+          const res = await fetch(`/${id}/me`, {
             method: "PUT",
             headers: { Authorization: `Bearer ${token}` },
           });

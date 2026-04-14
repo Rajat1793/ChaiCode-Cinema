@@ -17,26 +17,36 @@ Live demo: [ChaiCode Cinema](https://chaicode-cinema.onrender.com/)
 
 ## Features
 
-- User registration with hashed passwords
+- User registration with hashed passwords (bcryptjs)
 - User login returning a JWT token
-- Auth middleware protecting booking endpoints
-- Seat booking tied to the logged-in user
-- Duplicate seat booking prevention (DB transaction + FOR UPDATE lock)
-- Responsive seat grid UI with login/register screen
+- Modular auth middleware (`middleware/auth.middleware.mjs`)
+- Seat booking tied to the logged-in user — name comes from JWT, not URL
+- Duplicate seat booking prevention (DB transaction + `FOR UPDATE` lock)
+- Responsive seat grid UI with login/register tabs
 - Auto-login on page refresh if token is still valid
-- DB reset utility script
+- Cold start handling: `/health` endpoint, self-ping keep-alive, frontend retry loop
+- DB migration and reset utility scripts
+- All config via `.env` — no hardcoded values in code
 
 ---
 
 ## Project Structure
 
 ```
-├── index.mjs        # Main Express server
-├── index.html       # Frontend UI
-├── migrate.mjs      # Creates tables and seeds seat data
-├── reset-db.mjs     # Clears all users and resets seats
+├── db/
+│   └── pool.mjs              # pg connection pool (shared across routes)
+├── middleware/
+│   └── auth.middleware.mjs   # JWT authentication middleware
+├── routes/
+│   ├── auth.routes.mjs       # POST /register, POST /login
+│   ├── seats.routes.mjs      # GET /seats, PUT /:id/:name
+│   └── user.routes.mjs       # GET /me
+├── index.mjs                 # App setup, route wiring, server start
+├── index.html                # Frontend UI
+├── migrate.mjs               # Creates tables and seeds seat data
+├── reset-db.mjs              # Clears all users and resets seats
 ├── package.json
-├── .env             # Local environment variables (not committed)
+├── .env                      # Local environment variables (not committed)
 └── .gitignore
 ```
 
@@ -66,9 +76,20 @@ npm install
 Create a `.env` file in the root:
 
 ```env
-JWT_SECRET=your_secret_key_here
+# Server
 PORT=8080
-DATABASE_URL=postgresql://user:password@host:port/dbname
+APP_URL=http://localhost:8080   # Set to your Render URL in production
+
+# Database
+DATABASE_URL=postgresql://user:password@host:5432/dbname
+
+# Auth
+JWT_SECRET=your_strong_secret_here
+JWT_EXPIRES_IN=1h
+BCRYPT_SALT_ROUNDS=10
+
+# Seats
+SEAT_COUNT=50
 ```
 
 ### 4. Run PostgreSQL with Docker (optional)
@@ -108,12 +129,12 @@ Open `http://localhost:8080`
 | Method | Route | Auth | Description |
 |--------|-------|------|-------------|
 | `GET` | `/` | No | Serves the frontend |
+| `GET` | `/health` | No | Health check (used by Render) |
 | `GET` | `/seats` | No | Get all seats with booking status |
 | `POST` | `/register` | No | Register a new user |
 | `POST` | `/login` | No | Login and receive JWT token |
 | `GET` | `/me` | Yes | Get logged-in user's profile |
-| `PUT` | `/book/:id` | Yes | Book a seat by seat ID |
-| `PUT` | `/:id/:name` | Yes | Original booking endpoint (kept for compatibility) |
+| `PUT` | `/:id/:name` | Yes | Book a seat (name resolved from JWT, not URL) |
 
 ### Auth Header
 
@@ -137,8 +158,8 @@ curl -X POST http://localhost:8080/login \
   -H "Content-Type: application/json" \
   -d '{"email":"raj@test.com","password":"secret123"}'
 
-# Book a seat (use token from login response)
-curl -X PUT http://localhost:8080/book/5 \
+# Book a seat — :name is a placeholder, real name comes from JWT
+curl -X PUT http://localhost:8080/5/me \
   -H "Authorization: Bearer <your_token>"
 ```
 
@@ -170,6 +191,12 @@ Hosted on **Render** (Web Service).
 | `DATABASE_URL` | Internal Render PostgreSQL URL |
 | `JWT_SECRET` | A strong random secret string |
 | `PORT` | `8080` |
+| `APP_URL` | Your Render service URL (enables self-ping keep-alive) |
+| `JWT_EXPIRES_IN` | `1h` (or `7d` etc.) |
+| `BCRYPT_SALT_ROUNDS` | `10` |
+| `SEAT_COUNT` | `50` |
 
 **Build Command:** `npm install`  
 **Start Command:** `node index.mjs`
+
+> **Note:** `APP_URL` enables a self-ping every 14 minutes to prevent Render free tier spin-down. Set it to your service URL e.g. `https://bookmyticket-xxxx.onrender.com`.
